@@ -6,6 +6,7 @@ import sqlite3
 import os
 import time
 import re
+import httpx
 
 app = FastAPI(title="Insighta Labs API")
 
@@ -183,11 +184,16 @@ def error(message: str, code: int):
 # Create profile end point
 @app.post("/api/profiles")
 async def create_profile(body: dict):
+    # Name is extracted to enable validation.
     name = body.get("name")
 
     if not name:
         return error("Missing or empty name", 400)
 
+    if not isinstance(name, str):
+        return error("name must be a string", 422)
+
+    # Input is normalized for lookup consistency.
     name = name.strip().lower()
 
     conn = get_db()
@@ -195,6 +201,7 @@ async def create_profile(body: dict):
         "SELECT * FROM profiles WHERE name = ?", (name,)
     ).fetchone()
 
+    # Database is checked to avoid redundant API calls.
     if existing:
         conn.close()
         return JSONResponse(
@@ -206,26 +213,66 @@ async def create_profile(body: dict):
             }
         )
 
-    # placeholder minimal insert (Stage 1 logic preserved)
+    # External data is fetched to enrich the profile.
+    async with httpx.AsyncClient() as client:
+        try:
+            g = await client.get("https://api.genderize.io", params={"name": name})
+            a = await client.get("https://api.agify.io", params={"name": name})
+            n = await client.get("https://api.nationalize.io", params={"name": name})
+
+            g_data = g.json()
+            a_data = a.json()
+            n_data = n.json()
+
+        except Exception:
+            return error("External API failure", 502)
+
+    # Responses are validated to ensure data integrity.
+    if not g_data.get("gender") or not a_data.get("age"):
+        return error("Invalid API response", 502)
+
+    countries = n_data.get("country", [])
+    if not countries:
+        return error("Invalid API response", 502)
+
+    # Top country is isolated to identify nationality.
+    top_country = max(countries, key=lambda x: x["probability"])
+
+    created_at = utc_now()
     profile_id = generate_uuid_v7()
 
+    # Profile is persisted for permanent storage.
     conn.execute("""
-        INSERT INTO profiles (id, name, created_at)
-        VALUES (?, ?, ?)
-    """, (profile_id, name, utc_now()))
+        INSERT INTO profiles (
+            id, name, gender, gender_probability, age, age_group,
+            country_id, country_name, country_probability, sample_size, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        profile_id,
+        name,
+        g_data["gender"],
+        g_data["probability"],
+        a_data["age"],
+        get_age_group(a_data["age"]),
+        top_country["country_id"],
+        top_country["country_id"],  # simple fallback for name
+        top_country["probability"],
+        g_data["count"],
+        created_at
+    ))
 
     conn.commit()
     conn.close()
 
+    # Created record is returned for client confirmation.
     return JSONResponse(
         status_code=201,
         content={
             "status": "success",
-            "data": {
-                "id": profile_id,
-                "name": name,
-                "created_at": utc_now()
-            }
+            "data": row_to_dict(conn.execute(
+                "SELECT * FROM profiles WHERE id = ?", (profile_id,)
+            ).fetchone())
         }
     )
 

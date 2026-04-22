@@ -231,30 +231,48 @@ async def create_profile(body: dict):
 # NLP Parser
 def parse_natural_language_query(q: str):
     filters = {}
-    q = q.lower()
+    q_lower = q.lower()
+    tokens = set(q_lower.split())
 
-    # gender
-    if any(w in q for w in ["male", "man", "men"]):
+    # Gender (handle both case properly)
+    male_words = {"male", "man", "men", "boy", "boys"}
+    female_words = {"female", "woman", "women", "girl", "girls"}
+
+    has_male = bool(tokens & male_words)
+    has_female = bool(tokens & female_words)
+
+    if has_male and not has_female:
         filters["gender"] = "male"
-    if any(w in q for w in ["female", "woman", "women"]):
+    elif has_female and not has_male:
         filters["gender"] = "female"
 
-    # age rules
-    if "young" in q:
+    # Age groups
+    if bool(tokens & {"child", "children", "kids"}):
+        filters["age_group"] = "child"
+    elif bool(tokens & {"teens","teenager", "teenagers"}):
+        filters["age_group"] = "teenager"
+    elif bool(tokens & {"adult", "adults"}):
+        filters["age_group"] = "adult"
+    elif bool(tokens & {"senior", "seniors", "elder", "elders", "old"}):
+        filters["age_group"] = "senior"
+
+    # Young (16–24)
+    if "young" in tokens:
         filters["min_age"] = 16
         filters["max_age"] = 24
 
-    match = re.search(r"above (\d+)", q)
-    if match:
-        filters["min_age"] = int(match.group(1))
+    # Above / Below
+    above = re.search(r"(above|over)\s+(\d+)", q_lower)
+    if above:
+        filters["min_age"] = int(above.group(2))
 
-    match = re.search(r"below (\d+)", q)
-    if match:
-        filters["max_age"] = int(match.group(1))
+    below = re.search(r"(below|under)\s+(\d+)", q_lower)
+    if below:
+        filters["max_age"] = int(below.group(2))
 
-    # country
-    for name, code in COUNTRY_NAME_TO_ID.items():
-        if name in q:
+    # Country (simple match)
+    for name, code in sorted(COUNTRY_NAME_TO_ID.items(), key=lambda x: -len(x[0])):
+        if name in q_lower:
             filters["country_id"] = code
             break
 

@@ -152,3 +152,112 @@ def init_db():
 
 
 init_db()
+
+# Fast lookup helpers 
+def row_to_dict(row):
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "gender": row["gender"],
+        "gender_probability": row["gender_probability"],
+        "age": row["age"],
+        "age_group": row["age_group"],
+        "country_id": row["country_id"],
+        "country_name": row["country_name"],
+        "country_probability": row["country_probability"],
+        "created_at": row["created_at"],
+    }
+
+# Create profile end point
+@app.post("/api/profiles")
+async def create_profile(body: dict):
+    name = body.get("name")
+
+    if not name:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "Missing or empty name"}
+        )
+
+    name = name.strip().lower()
+
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT * FROM profiles WHERE name = ?", (name,)
+    ).fetchone()
+
+    if existing:
+        conn.close()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "message": "Profile already exists",
+                "data": row_to_dict(existing)
+            }
+        )
+
+    # placeholder minimal insert (Stage 1 logic preserved)
+    profile_id = generate_uuid_v7()
+
+    conn.execute("""
+        INSERT INTO profiles (id, name, created_at)
+        VALUES (?, ?, ?)
+    """, (profile_id, name, utc_now()))
+
+    conn.commit()
+    conn.close()
+
+    return JSONResponse(
+        status_code=201,
+        content={
+            "status": "success",
+            "data": {
+                "id": profile_id,
+                "name": name,
+                "created_at": utc_now()
+            }
+        }
+    )
+
+# Get single profile end point 
+@app.get("/api/profiles/{profile_id}")
+async def get_profile(profile_id: str):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM profiles WHERE id = ?",
+        (profile_id,)
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return JSONResponse(
+            status_code=404,
+            content={"status": "error", "message": "Profile not found"}
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={"status": "success", "data": row_to_dict(row)}
+    )
+
+# Delete profile end point
+@app.delete("/api/profiles/{profile_id}")
+async def delete_profile(profile_id: str):
+    conn = get_db()
+
+    result = conn.execute(
+        "DELETE FROM profiles WHERE id = ?",
+        (profile_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    if result.rowcount == 0:
+        return JSONResponse(
+            status_code=404,
+            content={"status": "error", "message": "Profile not found"}
+        )
+
+    return Response(status_code=204)

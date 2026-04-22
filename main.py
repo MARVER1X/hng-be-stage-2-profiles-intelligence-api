@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import os
 import time
+import re
 
 app = FastAPI(title="Insighta Labs API")
 
@@ -376,3 +377,83 @@ async def get_profiles(
         }
     )
 
+# NLP Parser
+def parse_natural_language_query(q: str):
+    filters = {}
+    q = q.lower()
+
+    # gender
+    if any(w in q for w in ["male", "man", "men"]):
+        filters["gender"] = "male"
+    if any(w in q for w in ["female", "woman", "women"]):
+        filters["gender"] = "female"
+
+    # age rules
+    if "young" in q:
+        filters["min_age"] = 16
+        filters["max_age"] = 24
+
+    match = re.search(r"above (\d+)", q)
+    if match:
+        filters["min_age"] = int(match.group(1))
+
+    match = re.search(r"below (\d+)", q)
+    if match:
+        filters["max_age"] = int(match.group(1))
+
+    # country
+    for name, code in COUNTRY_NAME_TO_ID.items():
+        if name in q:
+            filters["country_id"] = code
+            break
+
+    return filters if filters else None
+
+# Search end points
+@app.get("/api/profiles/search")
+async def search_profiles(
+    q: str = None,
+    page: int = 1,
+    limit: int = 10
+):
+    if not q:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "Missing query parameter"}
+        )
+
+    filters = parse_natural_language_query(q)
+
+    if not filters:
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": "Unable to interpret query"}
+        )
+
+    count_q, data_q, params = build_profile_query(
+        **filters,
+        page=page,
+        limit=limit
+    )
+
+    conn = get_db()
+
+    total = conn.execute(count_q, params).fetchone()[0]
+
+    rows = conn.execute(
+        data_q,
+        params + [limit, (page - 1) * limit]
+    ).fetchall()
+
+    conn.close()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "data": [row_to_dict(r) for r in rows]
+        }
+    )

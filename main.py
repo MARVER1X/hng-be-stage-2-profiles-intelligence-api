@@ -399,7 +399,7 @@ async def get_profiles(
         min_gender_probability,
         min_country_probability,
         sort_by,
-        order,
+        order
     )
 
     conn = get_db()

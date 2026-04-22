@@ -169,16 +169,23 @@ def row_to_dict(row):
         "created_at": row["created_at"],
     }
 
+# Global error format helper
+def error(message: str, code: int):
+    return JSONResponse(
+        status_code=code,
+        content={
+            "status": "error",
+            "message": message
+        }
+    )
+
 # Create profile end point
 @app.post("/api/profiles")
 async def create_profile(body: dict):
     name = body.get("name")
 
     if not name:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing or empty name"}
-        )
+        return error("Missing or empty name", 400)
 
     name = name.strip().lower()
 
@@ -232,10 +239,7 @@ async def get_profile(profile_id: str):
     conn.close()
 
     if not row:
-        return JSONResponse(
-            status_code=404,
-            content={"status": "error", "message": "Profile not found"}
-        )
+        return error("Profile not found", 404)
 
     return JSONResponse(
         status_code=200,
@@ -256,10 +260,7 @@ async def delete_profile(profile_id: str):
     conn.close()
 
     if result.rowcount == 0:
-        return JSONResponse(
-            status_code=404,
-            content={"status": "error", "message": "Profile not found"}
-        )
+        return error("Profile not found", 404)
 
     return Response(status_code=204)
 
@@ -341,6 +342,21 @@ async def get_profiles(
     page: int = 1,
     limit: int = 10
 ):
+    # Validate sort_by
+    valid_sort = {"age", "created_at", "gender_probability"}
+    if sort_by not in valid_sort:
+        return error("Invalid query parameters", 400)
+
+    # Validate order
+    if order.lower() not in {"asc", "desc"}:
+        return error("Invalid query parameters", 400)
+
+    # Validate pagination
+    if page < 1:
+        return error("Invalid query parameters", 400)
+
+    if limit < 1 or limit > 50:
+        return error("Invalid query parameters", 400)
     count_q, data_q, params = build_profile_query(
         gender,
         age_group,
@@ -417,18 +433,12 @@ async def search_profiles(
     limit: int = 10
 ):
     if not q:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": "Missing query parameter"}
-        )
+        return error("Missing query parameter", 400)
 
     filters = parse_natural_language_query(q)
 
     if not filters:
-        return JSONResponse(
-            status_code=422,
-            content={"status": "error", "message": "Unable to interpret query"}
-        )
+        return error("Unable to interpret query", 422)
 
     count_q, data_q, params = build_profile_query(
         **filters,

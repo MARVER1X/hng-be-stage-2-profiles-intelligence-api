@@ -144,6 +144,7 @@ def init_db():
             country_id TEXT,
             country_name TEXT,
             country_probability REAL,
+            sample_size INTEGER,
             created_at TEXT
         )
     """)

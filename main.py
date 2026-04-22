@@ -262,6 +262,10 @@ async def create_profile(body: dict):
         created_at
     ))
 
+    row = conn.execute(
+        "SELECT * FROM profiles WHERE id = ?", (profile_id,)
+    ).fetchone()
+
     conn.commit()
     conn.close()
 
@@ -270,9 +274,7 @@ async def create_profile(body: dict):
         status_code=201,
         content={
             "status": "success",
-            "data": row_to_dict(conn.execute(
-                "SELECT * FROM profiles WHERE id = ?", (profile_id,)
-            ).fetchone())
+            "data": row_to_dict(row)
         }
     )
 
@@ -301,7 +303,7 @@ def parse_natural_language_query(q: str):
         filters["age_group"] = "teenager"
     elif bool(tokens & {"adult", "adults"}):
         filters["age_group"] = "adult"
-    elif bool(tokens & {"senior", "seniors", "elder", "elders", "old"}):
+    elif bool(tokens & {"senior", "seniors", "elder", "elders", "old", "elderly"}):
         filters["age_group"] = "senior"
 
     # Young (16–24)
@@ -394,10 +396,10 @@ async def search_profiles(
     page: int = 1,
     limit: int = 10
 ):
-    if not q:
+    if not q or q.strip() == "":
         return error("Missing query parameter", 400)
 
-    filters = parse_natural_language_query(q)
+    filters = parse_natural_language_query(q.strip())
 
     if not filters:
         return error("Unable to interpret query", 422)

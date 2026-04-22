@@ -228,41 +228,37 @@ async def create_profile(body: dict):
         }
     )
 
-# Get single profile end point 
-@app.get("/api/profiles/{profile_id}")
-async def get_profile(profile_id: str):
-    conn = get_db()
-    row = conn.execute(
-        "SELECT * FROM profiles WHERE id = ?",
-        (profile_id,)
-    ).fetchone()
-    conn.close()
+# NLP Parser
+def parse_natural_language_query(q: str):
+    filters = {}
+    q = q.lower()
 
-    if not row:
-        return error("Profile not found", 404)
+    # gender
+    if any(w in q for w in ["male", "man", "men"]):
+        filters["gender"] = "male"
+    if any(w in q for w in ["female", "woman", "women"]):
+        filters["gender"] = "female"
 
-    return JSONResponse(
-        status_code=200,
-        content={"status": "success", "data": row_to_dict(row)}
-    )
+    # age rules
+    if "young" in q:
+        filters["min_age"] = 16
+        filters["max_age"] = 24
 
-# Delete profile end point
-@app.delete("/api/profiles/{profile_id}")
-async def delete_profile(profile_id: str):
-    conn = get_db()
+    match = re.search(r"above (\d+)", q)
+    if match:
+        filters["min_age"] = int(match.group(1))
 
-    result = conn.execute(
-        "DELETE FROM profiles WHERE id = ?",
-        (profile_id,)
-    )
+    match = re.search(r"below (\d+)", q)
+    if match:
+        filters["max_age"] = int(match.group(1))
 
-    conn.commit()
-    conn.close()
+    # country
+    for name, code in COUNTRY_NAME_TO_ID.items():
+        if name in q:
+            filters["country_id"] = code
+            break
 
-    if result.rowcount == 0:
-        return error("Profile not found", 404)
-
-    return Response(status_code=204)
+    return filters if filters else None
 
 # Query builder
 def build_profile_query(
@@ -274,9 +270,7 @@ def build_profile_query(
     min_gender_probability=None,
     min_country_probability=None,
     sort_by="created_at",
-    order="asc",
-    page=1,
-    limit=10
+    order="asc"
 ):
     where = []
     params = []
@@ -327,6 +321,45 @@ def build_profile_query(
 
     return count_q, data_q, params
 
+# Search end points
+@app.get("/api/profiles/search")
+async def search_profiles(
+    q: str = None,
+    page: int = 1,
+    limit: int = 10
+):
+    if not q:
+        return error("Missing query parameter", 400)
+
+    filters = parse_natural_language_query(q)
+
+    if not filters:
+        return error("Unable to interpret query", 422)
+
+    count_q, data_q, params = build_profile_query(**filters)
+
+    conn = get_db()
+
+    total = conn.execute(count_q, params).fetchone()[0]
+
+    rows = conn.execute(
+        data_q,
+        params + [limit, (page - 1) * limit]
+    ).fetchall()
+
+    conn.close()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "data": [row_to_dict(r) for r in rows]
+        }
+    )
+
 # Get API profiles
 @app.get("/api/profiles")
 async def get_profiles(
@@ -367,8 +400,6 @@ async def get_profiles(
         min_country_probability,
         sort_by,
         order,
-        page,
-        limit
     )
 
     conn = get_db()
@@ -393,77 +424,39 @@ async def get_profiles(
         }
     )
 
-# NLP Parser
-def parse_natural_language_query(q: str):
-    filters = {}
-    q = q.lower()
-
-    # gender
-    if any(w in q for w in ["male", "man", "men"]):
-        filters["gender"] = "male"
-    if any(w in q for w in ["female", "woman", "women"]):
-        filters["gender"] = "female"
-
-    # age rules
-    if "young" in q:
-        filters["min_age"] = 16
-        filters["max_age"] = 24
-
-    match = re.search(r"above (\d+)", q)
-    if match:
-        filters["min_age"] = int(match.group(1))
-
-    match = re.search(r"below (\d+)", q)
-    if match:
-        filters["max_age"] = int(match.group(1))
-
-    # country
-    for name, code in COUNTRY_NAME_TO_ID.items():
-        if name in q:
-            filters["country_id"] = code
-            break
-
-    return filters if filters else None
-
-# Search end points
-@app.get("/api/profiles/search")
-async def search_profiles(
-    q: str = None,
-    page: int = 1,
-    limit: int = 10
-):
-    if not q:
-        return error("Missing query parameter", 400)
-
-    filters = parse_natural_language_query(q)
-
-    if not filters:
-        return error("Unable to interpret query", 422)
-
-    count_q, data_q, params = build_profile_query(
-        **filters,
-        page=page,
-        limit=limit
-    )
-
+# Get single profile end point 
+@app.get("/api/profiles/{profile_id}")
+async def get_profile(profile_id: str):
     conn = get_db()
-
-    total = conn.execute(count_q, params).fetchone()[0]
-
-    rows = conn.execute(
-        data_q,
-        params + [limit, (page - 1) * limit]
-    ).fetchall()
-
+    row = conn.execute(
+        "SELECT * FROM profiles WHERE id = ?",
+        (profile_id,)
+    ).fetchone()
     conn.close()
+
+    if not row:
+        return error("Profile not found", 404)
 
     return JSONResponse(
         status_code=200,
-        content={
-            "status": "success",
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "data": [row_to_dict(r) for r in rows]
-        }
+        content={"status": "success", "data": row_to_dict(row)}
     )
+
+# Delete profile end point
+@app.delete("/api/profiles/{profile_id}")
+async def delete_profile(profile_id: str):
+    conn = get_db()
+
+    result = conn.execute(
+        "DELETE FROM profiles WHERE id = ?",
+        (profile_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    if result.rowcount == 0:
+        return error("Profile not found", 404)
+
+    return Response(status_code=204)
+

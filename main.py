@@ -261,3 +261,118 @@ async def delete_profile(profile_id: str):
         )
 
     return Response(status_code=204)
+
+# Query builder
+def build_profile_query(
+    gender=None,
+    age_group=None,
+    country_id=None,
+    min_age=None,
+    max_age=None,
+    min_gender_probability=None,
+    min_country_probability=None,
+    sort_by="created_at",
+    order="asc",
+    page=1,
+    limit=10
+):
+    where = []
+    params = []
+
+    if gender:
+        where.append("LOWER(gender) = ?")
+        params.append(gender.lower())
+
+    if age_group:
+        where.append("LOWER(age_group) = ?")
+        params.append(age_group.lower())
+
+    if country_id:
+        where.append("LOWER(country_id) = ?")
+        params.append(country_id.lower())
+
+    if min_age is not None:
+        where.append("age >= ?")
+        params.append(min_age)
+
+    if max_age is not None:
+        where.append("age <= ?")
+        params.append(max_age)
+
+    if min_gender_probability is not None:
+        where.append("gender_probability >= ?")
+        params.append(min_gender_probability)
+
+    if min_country_probability is not None:
+        where.append("country_probability >= ?")
+        params.append(min_country_probability)
+
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+
+    allowed_sort = {"age", "created_at", "gender_probability"}
+    sort_by = sort_by if sort_by in allowed_sort else "created_at"
+
+    order = "ASC" if order.lower() != "desc" else "DESC"
+
+    count_q = f"SELECT COUNT(*) FROM profiles {where_sql}"
+
+    data_q = f"""
+        SELECT * FROM profiles
+        {where_sql}
+        ORDER BY {sort_by} {order}
+        LIMIT ? OFFSET ?
+    """
+
+    return count_q, data_q, params
+
+# Get API profiles
+@app.get("/api/profiles")
+async def get_profiles(
+    gender: str = None,
+    age_group: str = None,
+    country_id: str = None,
+    min_age: int = None,
+    max_age: int = None,
+    min_gender_probability: float = None,
+    min_country_probability: float = None,
+    sort_by: str = "created_at",
+    order: str = "asc",
+    page: int = 1,
+    limit: int = 10
+):
+    count_q, data_q, params = build_profile_query(
+        gender,
+        age_group,
+        country_id,
+        min_age,
+        max_age,
+        min_gender_probability,
+        min_country_probability,
+        sort_by,
+        order,
+        page,
+        limit
+    )
+
+    conn = get_db()
+
+    total = conn.execute(count_q, params).fetchone()[0]
+
+    rows = conn.execute(
+        data_q,
+        params + [limit, (page - 1) * limit]
+    ).fetchall()
+
+    conn.close()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "data": [row_to_dict(r) for r in rows]
+        }
+    )
+

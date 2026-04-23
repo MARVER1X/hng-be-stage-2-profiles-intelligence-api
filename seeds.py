@@ -60,7 +60,6 @@ def seed(filename: str, db_path: str = "profiles.db"):
             country_id          TEXT,
             country_name        TEXT,
             country_probability REAL,
-            sample_size         INTEGER,
             created_at          TEXT
         )
     """)
@@ -87,8 +86,8 @@ def seed(filename: str, db_path: str = "profiles.db"):
             conn.execute("""
                 INSERT INTO profiles
                     (id, name, gender, gender_probability, age, age_group,
-                     country_id, country_name, country_probability, sample_size, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     country_id, country_name, country_probability, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 generate_uuid_v7(),
                 name,
@@ -99,7 +98,6 @@ def seed(filename: str, db_path: str = "profiles.db"):
                 p.get("country_id"),
                 p.get("country_name"),
                 p.get("country_probability"),
-                p.get("sample_size", p.get("count")),  # handle both field names
                 p.get("created_at") or utc_now(),
             ))
             inserted += 1

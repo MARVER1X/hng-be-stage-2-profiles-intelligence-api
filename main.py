@@ -291,8 +291,8 @@ def parse_natural_language_query(q: str):
     tokens = set(q_lower.split())
 
     # Gender (handle both case properly)
-    male_words = {"male", "man", "men", "boy", "boys"}
-    female_words = {"female", "woman", "women", "girl", "girls"}
+    male_words = {"male", "males", "man", "men", "boy", "boys"}
+    female_words = {"female", "females", "woman", "women", "girl", "girls"}
 
     has_male = bool(tokens & male_words)
     has_female = bool(tokens & female_words)

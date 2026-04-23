@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3

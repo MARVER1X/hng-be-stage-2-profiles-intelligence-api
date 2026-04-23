@@ -4,7 +4,7 @@ A high-performance REST API built with FastAPI that stores demographic profiles 
 
 The system allows clients to query structured demographic data using both traditional query parameters and natural language queries.
 
-🔗 **Live API**: [Demo app](https://your-live-api-url.up.railway.app)
+🔗 **Live API**: [Demo app](web-production-1d564.up.railway.app)
 
 ---
 

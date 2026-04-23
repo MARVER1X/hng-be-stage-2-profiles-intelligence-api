@@ -40,6 +40,16 @@ def seed(filename: str, db_path: str = "profiles.db"):
         print(f"Error: Could not parse JSON — {e}")
         sys.exit(1)
 
+    if isinstance(profiles, dict):
+        # Find the first list value in the dict
+        list_candidates = [v for v in profiles.values() if isinstance(v, list)]
+
+        if len(list_candidates) == 1:
+            profiles = list_candidates[0]
+        else:
+            print("Error: Could not uniquely identify profiles list in JSON.")
+            sys.exit(1)
+
     if not isinstance(profiles, list):
         print("Error: Expected a JSON array at the top level.")
         sys.exit(1)

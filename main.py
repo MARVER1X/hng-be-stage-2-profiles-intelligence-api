@@ -90,6 +90,10 @@ COUNTRY_NAME_TO_ID = {
     "mexico": "MX", "mexican": "MX",
 }
 
+COUNTRY_ID_TO_NAME = {
+    v: k.title() for k, v in COUNTRY_NAME_TO_ID.items()
+}
+
 # UUID v7 generator
 def generate_uuid_v7() -> str:
     ts_ms = int(time.time() * 1000)
@@ -246,7 +250,7 @@ async def create_profile(body: dict):
             id, name, gender, gender_probability, age, age_group,
             country_id, country_name, country_probability, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         profile_id,
         name,
@@ -255,16 +259,20 @@ async def create_profile(body: dict):
         a_data["age"],
         get_age_group(a_data["age"]),
         top_country["country_id"],
-        top_country["country_id"],  # simple fallback for name
+        COUNTRY_ID_TO_NAME.get(
+            top_country["country_id"],
+            top_country["country_id"]
+        ),
         top_country["probability"],
         created_at
     ))
+    
+    conn.commit()
 
     row = conn.execute(
         "SELECT * FROM profiles WHERE id = ?", (profile_id,)
     ).fetchone()
 
-    conn.commit()
     conn.close()
 
     # Created record is returned for client confirmation.

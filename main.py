@@ -145,7 +145,6 @@ def init_db():
             country_id TEXT,
             country_name TEXT,
             country_probability REAL,
-            sample_size INTEGER,
             created_at TEXT
         )
     """)
@@ -245,7 +244,7 @@ async def create_profile(body: dict):
     conn.execute("""
         INSERT INTO profiles (
             id, name, gender, gender_probability, age, age_group,
-            country_id, country_name, country_probability, sample_size, created_at
+            country_id, country_name, country_probability, created_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
@@ -258,7 +257,6 @@ async def create_profile(body: dict):
         top_country["country_id"],
         top_country["country_id"],  # simple fallback for name
         top_country["probability"],
-        g_data["count"],
         created_at
     ))
 

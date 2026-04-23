@@ -404,6 +404,10 @@ async def search_profiles(
 ):
     if not q or q.strip() == "":
         return error("Missing query parameter", 400)
+    
+    # Validate pagination
+    if page < 1 or limit < 1 or limit > 50:
+        return error("Invalid query parameters", 400)
 
     filters = parse_natural_language_query(q.strip())
 
